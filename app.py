@@ -4,12 +4,24 @@ import numpy as np
 import requests
 from PIL import Image
 from io import BytesIO
+import zipfile
+import os
 
 app = Flask(__name__)
 
+# Paths for the compressed model and extraction directory
+MODEL_ZIP_PATH = "model/model_weights.zip"
+MODEL_EXTRACTION_PATH = "model/"
+MODEL_FILE_PATH = MODEL_EXTRACTION_PATH + "model_weights.h5"
+
+# Extract the model if it's zipped
+if os.path.exists(MODEL_ZIP_PATH) and not os.path.exists(MODEL_FILE_PATH):
+    with zipfile.ZipFile(MODEL_ZIP_PATH, 'r') as zip_ref:
+        zip_ref.extractall(MODEL_EXTRACTION_PATH)
+        print("Model extracted successfully.")
+
 # Load the model
-MODEL_PATH = "model_weights.h5"
-model = tf.keras.models.load_model(MODEL_PATH)
+model = tf.keras.models.load_model(MODEL_FILE_PATH)
 
 # Preprocess the image before passing it to the model
 def preprocess_image(image):
