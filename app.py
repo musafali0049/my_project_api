@@ -6,6 +6,7 @@ from PIL import Image
 from io import BytesIO
 import zipfile
 import os
+from asgiref.wsgi import WsgiToAsgi  # ASGI Compatibility
 
 app = Flask(__name__)
 
@@ -66,5 +67,9 @@ def predict():
         except Exception as e:
             return jsonify({"error": f"URL processing error: {str(e)}"}), 500
 
+# Convert Flask app to ASGI
+asgi_app = WsgiToAsgi(app)
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)  # Use Flask's built-in WSGI server
+    import uvicorn
+    uvicorn.run(asgi_app, host="0.0.0.0", port=8000)
