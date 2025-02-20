@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flasgger import Swagger
 import tensorflow as tf
 import numpy as np
 import requests
@@ -9,6 +10,7 @@ import os
 from asgiref.wsgi import WsgiToAsgi  # ASGI Compatibility
 
 app = Flask(__name__)
+Swagger(app)  # Initialize Flasgger for API documentation
 
 # Paths for the compressed model and extraction directory
 MODEL_ZIP_PATH = "model/model_weights.zip"
@@ -37,6 +39,32 @@ def preprocess_image(image):
 
 @app.route("/predict", methods=["POST"])
 def predict():
+    """
+    Predict the class of an uploaded image or an image from a URL.
+    ---
+    parameters:
+      - name: file
+        in: formData
+        type: file
+        required: false
+        description: The image file to be uploaded.
+      - name: url
+        in: body
+        required: false
+        schema:
+          type: object
+          properties:
+            url:
+              type: string
+              example: "https://example.com/image.jpg"
+    responses:
+      200:
+        description: Prediction result
+      400:
+        description: Bad request
+      500:
+        description: Internal server error
+    """
     if "file" in request.files:
         try:
             image_file = request.files["file"]
