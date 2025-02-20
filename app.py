@@ -35,7 +35,7 @@ def preprocess_image(image):
     return image
 
 @app.route("/predict", methods=["POST"])
-async def predict():
+def predict():
     if "file" in request.files:
         try:
             image_file = request.files["file"]
@@ -67,4 +67,4 @@ async def predict():
             return jsonify({"error": f"URL processing error: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000)  # Use Flask's built-in WSGI server
