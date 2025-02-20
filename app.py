@@ -6,6 +6,7 @@ from PIL import Image
 from io import BytesIO
 import zipfile
 import os
+from asgiref.wsgi import WsgiToAsgi
 
 app = Flask(__name__)
 
@@ -37,7 +38,6 @@ def preprocess_image(image):
 @app.route("/predict", methods=["POST"])
 def predict():
     if "file" in request.files:
-        # If an image file is sent
         try:
             image_file = request.files["file"]
             image = Image.open(image_file).convert("RGB")
@@ -47,18 +47,14 @@ def predict():
             result = prediction.tolist()
 
             return jsonify({"prediction": result})
-
         except Exception as e:
             return jsonify({"error": f"File processing error: {str(e)}"}), 500
-
     else:
-        # If JSON with URL is sent
         data = request.get_json()
         image_url = data.get("url")
 
         if not image_url:
             return jsonify({"error": "No image provided"}), 400
-
         try:
             response = requests.get(image_url)
             image = Image.open(BytesIO(response.content)).convert("RGB")
@@ -68,9 +64,11 @@ def predict():
             result = prediction.tolist()
 
             return jsonify({"prediction": result})
-
         except Exception as e:
             return jsonify({"error": f"URL processing error: {str(e)}"}), 500
 
+asgi_app = WsgiToAsgi(app)
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    import uvicorn
+    uvicorn.run(asgi_app, host="0.0.0.0", port=8000)
