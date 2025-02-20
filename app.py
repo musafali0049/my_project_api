@@ -18,10 +18,14 @@ MODEL_FILE_PATH = MODEL_EXTRACTION_PATH + "model_weights.h5"
 if os.path.exists(MODEL_ZIP_PATH) and not os.path.exists(MODEL_FILE_PATH):
     with zipfile.ZipFile(MODEL_ZIP_PATH, 'r') as zip_ref:
         zip_ref.extractall(MODEL_EXTRACTION_PATH)
-        print("Model extracted successfully.")
+        print("✅ Model extracted successfully.")
 
-# Load the model
-model = tf.keras.models.load_model(MODEL_FILE_PATH)
+# Load the model with error handling
+try:
+    model = tf.keras.models.load_model(MODEL_FILE_PATH)
+    print("✅ Model loaded successfully.")
+except Exception as e:
+    print(f"❌ Error loading model: {e}")
 
 # Preprocess the image before passing it to the model
 def preprocess_image(image):
@@ -32,24 +36,41 @@ def preprocess_image(image):
 
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.get_json()
-    image_url = data.get("url")
+    if "file" in request.files:
+        # If an image file is sent
+        try:
+            image_file = request.files["file"]
+            image = Image.open(image_file).convert("RGB")
+            processed_image = preprocess_image(image)
 
-    if not image_url:
-        return jsonify({"error": "No URL provided"}), 400
+            prediction = model.predict(processed_image)
+            result = prediction.tolist()
 
-    try:
-        response = requests.get(image_url)
-        image = Image.open(BytesIO(response.content)).convert("RGB")
-        processed_image = preprocess_image(image)
+            return jsonify({"prediction": result})
 
-        prediction = model.predict(processed_image)
-        result = prediction.tolist()
+        except Exception as e:
+            return jsonify({"error": f"File processing error: {str(e)}"}), 500
 
-        return jsonify({"prediction": result})
+    else:
+        # If JSON with URL is sent
+        data = request.get_json()
+        image_url = data.get("url")
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        if not image_url:
+            return jsonify({"error": "No image provided"}), 400
+
+        try:
+            response = requests.get(image_url)
+            image = Image.open(BytesIO(response.content)).convert("RGB")
+            processed_image = preprocess_image(image)
+
+            prediction = model.predict(processed_image)
+            result = prediction.tolist()
+
+            return jsonify({"prediction": result})
+
+        except Exception as e:
+            return jsonify({"error": f"URL processing error: {str(e)}"}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
