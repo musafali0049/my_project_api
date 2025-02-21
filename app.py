@@ -1,5 +1,4 @@
-from flask import Flask, request, jsonify
-from flasgger import Swagger
+from fastapi import FastAPI, File, UploadFile, HTTPException
 import tensorflow as tf
 import numpy as np
 import requests
@@ -7,9 +6,9 @@ from PIL import Image
 from io import BytesIO
 import zipfile
 import os
+from fastapi import FastAPI
 
-app = Flask(__name__)
-Swagger(app)  # Initialize Flasgger for API documentation
+app = FastAPI(title="Image Classification API", description="Upload an image or provide a URL for classification.", version="1.0")
 
 # Paths for the compressed model and extraction directory
 MODEL_ZIP_PATH = "model/model_weights.zip"
@@ -28,6 +27,7 @@ try:
     print("✅ Model loaded successfully.")
 except Exception as e:
     print(f"❌ Error loading model: {e}")
+    model = None
 
 # Preprocess the image before passing it to the model
 def preprocess_image(image):
@@ -36,64 +36,30 @@ def preprocess_image(image):
     image = np.expand_dims(image, axis=0)  # Add batch dimension
     return image
 
-@app.route("/predict", methods=["POST"])
-def predict():
+@app.post("/predict/")
+async def predict(file: UploadFile = File(None), url: str = None):
     """
     Predict the class of an uploaded image or an image from a URL.
-    ---
-    parameters:
-      - name: file
-        in: formData
-        type: file
-        required: false
-        description: The image file to be uploaded.
-      - name: url
-        in: body
-        required: false
-        schema:
-          type: object
-          properties:
-            url:
-              type: string
-              example: "https://example.com/image.jpg"
-    responses:
-      200:
-        description: Prediction result
-      400:
-        description: Bad request
-      500:
-        description: Internal server error
     """
-    if "file" in request.files:
+    if file:
         try:
-            image_file = request.files["file"]
-            image = Image.open(image_file).convert("RGB")
-            processed_image = preprocess_image(image)
-
-            prediction = model.predict(processed_image)
-            result = prediction.tolist()
-
-            return jsonify({"prediction": result})
+            image = Image.open(BytesIO(await file.read())).convert("RGB")
         except Exception as e:
-            return jsonify({"error": f"File processing error: {str(e)}"}), 500
-    else:
-        data = request.get_json()
-        image_url = data.get("url")
-
-        if not image_url:
-            return jsonify({"error": "No image provided"}), 400
+            raise HTTPException(status_code=400, detail=f"File processing error: {str(e)}")
+    elif url:
         try:
-            response = requests.get(image_url)
+            response = requests.get(url)
             image = Image.open(BytesIO(response.content)).convert("RGB")
-            processed_image = preprocess_image(image)
-
-            prediction = model.predict(processed_image)
-            result = prediction.tolist()
-
-            return jsonify({"prediction": result})
         except Exception as e:
-            return jsonify({"error": f"URL processing error: {str(e)}"}), 500
+            raise HTTPException(status_code=400, detail=f"URL processing error: {str(e)}")
+    else:
+        raise HTTPException(status_code=400, detail="No image provided")
 
-if __name__ == "__main__":
-    from waitress import serve  # Production WSGI server
-    serve(app, host="0.0.0.0", port=8000)
+    if model is None:
+        raise HTTPException(status_code=500, detail="Model not loaded")
+
+    processed_image = preprocess_image(image)
+    prediction = model.predict(processed_image)
+    result = prediction.tolist()
+
+    return {"prediction": result}
