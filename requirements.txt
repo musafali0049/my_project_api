@@ -4,3 +4,4 @@ tensorflow-cpu
 pillow
 flasgger
 asgiref
+waitress
