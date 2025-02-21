@@ -1,7 +1,6 @@
-flask
-gunicorn
+fastapi
+uvicorn
 tensorflow-cpu
 pillow
-flasgger
-asgiref
-waitress
+gunicorn
+requests
