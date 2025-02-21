@@ -7,14 +7,16 @@ from io import BytesIO
 import zipfile
 import os
 
-app = FastAPI(title="Image Classification API",
-              description="Upload an image or provide a URL for classification.",
-              version="1.0")
+app = FastAPI(
+    title="Image Classification API",
+    description="Upload an image or provide a URL for classification.",
+    version="1.0"
+)
 
 # Paths for the model
 MODEL_ZIP_PATH = "model/model_weights.zip"
 MODEL_EXTRACTION_PATH = "model/"
-MODEL_FILE_PATH = MODEL_EXTRACTION_PATH + "model_weights.h5"
+MODEL_FILE_PATH = os.path.join(MODEL_EXTRACTION_PATH, "model_weights.h5")
 
 # Extract the model if it's zipped
 if os.path.exists(MODEL_ZIP_PATH) and not os.path.exists(MODEL_FILE_PATH):
@@ -28,46 +30,61 @@ try:
     print("✅ Model loaded successfully.")
 except Exception as e:
     print(f"❌ Error loading model: {e}")
-    model = None
+    model = None  # Ensures no invalid model is used
 
 # Preprocess the image before passing it to the model
-def preprocess_image(image):
-    image = image.resize((224, 224))  # Adjust size based on model requirements
+def preprocess_image(image: Image.Image):
+    image = image.resize((224, 224))  # Resize to match model input size
     image = np.array(image) / 255.0  # Normalize pixel values
     image = np.expand_dims(image, axis=0)  # Add batch dimension
     return image
+
+# ✅ Add a Root Route to Avoid 404 Errors
+@app.get("/")
+async def home():
+    return {
+        "message": "Welcome to the Image Classification API!",
+        "usage": "Use /predict/ to classify images",
+        "docs": "/docs for API documentation"
+    }
 
 @app.post("/predict/")
 async def predict(file: UploadFile = File(None), url: str = None):
     """
     Predict the class of an uploaded image or an image from a URL.
     """
+    if model is None:
+        raise HTTPException(status_code=500, detail="❌ Model failed to load, cannot make predictions.")
+
     if file and url:
         raise HTTPException(status_code=400, detail="Provide either a file or a URL, not both.")
 
+    # Read image from file upload
     if file:
         try:
             image = Image.open(BytesIO(await file.read())).convert("RGB")
+            print("📂 Received image via file upload.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"File processing error: {str(e)}")
 
+    # Read image from URL
     elif url:
         try:
             response = requests.get(url)
             if response.status_code != 200:
                 raise HTTPException(status_code=400, detail="Invalid image URL or server error.")
             image = Image.open(BytesIO(response.content)).convert("RGB")
+            print("🌍 Received image via URL.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"URL processing error: {str(e)}")
+
     else:
-        raise HTTPException(status_code=400, detail="No image provided")
+        raise HTTPException(status_code=400, detail="No image provided.")
 
-    if model is None:
-        raise HTTPException(status_code=500, detail="Model not loaded")
-
+    # Preprocess and predict
     processed_image = preprocess_image(image)
     prediction = model.predict(processed_image)
     result = prediction.tolist()
 
+    print("✅ Prediction successful!")
     return {"prediction": result}
-
