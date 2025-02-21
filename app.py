@@ -6,11 +6,12 @@ from PIL import Image
 from io import BytesIO
 import zipfile
 import os
-from fastapi import FastAPI
 
-app = FastAPI(title="Image Classification API", description="Upload an image or provide a URL for classification.", version="1.0")
+app = FastAPI(title="Image Classification API",
+              description="Upload an image or provide a URL for classification.",
+              version="1.0")
 
-# Paths for the compressed model and extraction directory
+# Paths for the model
 MODEL_ZIP_PATH = "model/model_weights.zip"
 MODEL_EXTRACTION_PATH = "model/"
 MODEL_FILE_PATH = MODEL_EXTRACTION_PATH + "model_weights.h5"
@@ -41,14 +42,20 @@ async def predict(file: UploadFile = File(None), url: str = None):
     """
     Predict the class of an uploaded image or an image from a URL.
     """
+    if file and url:
+        raise HTTPException(status_code=400, detail="Provide either a file or a URL, not both.")
+
     if file:
         try:
             image = Image.open(BytesIO(await file.read())).convert("RGB")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"File processing error: {str(e)}")
+
     elif url:
         try:
             response = requests.get(url)
+            if response.status_code != 200:
+                raise HTTPException(status_code=400, detail="Invalid image URL or server error.")
             image = Image.open(BytesIO(response.content)).convert("RGB")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"URL processing error: {str(e)}")
@@ -63,3 +70,4 @@ async def predict(file: UploadFile = File(None), url: str = None):
     result = prediction.tolist()
 
     return {"prediction": result}
+
