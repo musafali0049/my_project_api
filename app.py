@@ -7,7 +7,6 @@ from PIL import Image
 from io import BytesIO
 import zipfile
 import os
-from asgiref.wsgi import WsgiToAsgi  # ASGI Compatibility
 
 app = Flask(__name__)
 Swagger(app)  # Initialize Flasgger for API documentation
@@ -95,9 +94,6 @@ def predict():
         except Exception as e:
             return jsonify({"error": f"URL processing error: {str(e)}"}), 500
 
-# Convert Flask app to ASGI
-asgi_app = WsgiToAsgi(app)
-
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(asgi_app, host="0.0.0.0", port=8000)
+    from waitress import serve  # Production WSGI server
+    serve(app, host="0.0.0.0", port=8000)
