@@ -35,9 +35,11 @@ except Exception as e:
 # Preprocess the image before passing it to the model
 def preprocess_image(image: Image.Image):
     image = image.resize((224, 224))  # Resize to match model input size
+    image = image.convert("L")  # Convert to grayscale (L mode in PIL)
     image = np.array(image) / 255.0  # Normalize pixel values
-    image = np.expand_dims(image, axis=0)  # Add batch dimension
-    return image
+    image = np.expand_dims(image, axis=-1)  # Add channel dimension (H, W, 1)
+    image = np.expand_dims(image, axis=0)  # Add batch dimension (1, H, W, 1)
+    return image.astype(np.float32)
 
 # ✅ Add a Root Route to Avoid 404 Errors
 @app.get("/")
