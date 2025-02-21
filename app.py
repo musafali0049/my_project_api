@@ -7,10 +7,14 @@ from io import BytesIO
 import zipfile
 import os
 
+# Initialize FastAPI app with OpenAPI enabled
 app = FastAPI(
     title="Image Classification API",
     description="Upload an image or provide a URL for classification.",
-    version="1.0"
+    version="1.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
 # Paths for the model
@@ -25,20 +29,22 @@ if os.path.exists(MODEL_ZIP_PATH) and not os.path.exists(MODEL_FILE_PATH):
         print("✅ Model extracted successfully.")
 
 # Load the model with error handling
-try:
-    model = tf.keras.models.load_model(MODEL_FILE_PATH)
-    print("✅ Model loaded successfully.")
-except Exception as e:
-    print(f"❌ Error loading model: {e}")
-    model = None  # Ensures no invalid model is used
+model = None
+if os.path.exists(MODEL_FILE_PATH):
+    try:
+        model = tf.keras.models.load_model(MODEL_FILE_PATH)
+        print("✅ Model loaded successfully.")
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
+        model = None
+else:
+    print("❌ Model file not found. Ensure model_weights.h5 is uploaded.")
 
 # Preprocess the image before passing it to the model
 def preprocess_image(image: Image.Image):
-    image = image.resize((224, 224))  # Resize to match model input size
-    image = image.convert("L")  # Convert to grayscale (L mode in PIL)
+    image = image.resize((224, 224))  # Resize to model input size
     image = np.array(image) / 255.0  # Normalize pixel values
-    image = np.expand_dims(image, axis=-1)  # Add channel dimension (H, W, 1)
-    image = np.expand_dims(image, axis=0)  # Add batch dimension (1, H, W, 1)
+    image = np.expand_dims(image, axis=0)  # Add batch dimension (1, H, W, C)
     return image.astype(np.float32)
 
 # ✅ Add a Root Route to Avoid 404 Errors
@@ -64,7 +70,7 @@ async def predict(file: UploadFile = File(None), url: str = None):
     # Read image from file upload
     if file:
         try:
-            image = Image.open(BytesIO(await file.read())).convert("RGB")
+            image = Image.open(BytesIO(await file.read())).convert("RGB")  # Keep RGB
             print("📂 Received image via file upload.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"File processing error: {str(e)}")
@@ -75,7 +81,7 @@ async def predict(file: UploadFile = File(None), url: str = None):
             response = requests.get(url)
             if response.status_code != 200:
                 raise HTTPException(status_code=400, detail="Invalid image URL or server error.")
-            image = Image.open(BytesIO(response.content)).convert("RGB")
+            image = Image.open(BytesIO(response.content)).convert("RGB")  # Keep RGB
             print("🌍 Received image via URL.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"URL processing error: {str(e)}")
@@ -85,8 +91,10 @@ async def predict(file: UploadFile = File(None), url: str = None):
 
     # Preprocess and predict
     processed_image = preprocess_image(image)
-    prediction = model.predict(processed_image)
-    result = prediction.tolist()
-
-    print("✅ Prediction successful!")
-    return {"prediction": result}
+    try:
+        prediction = model.predict(processed_image)
+        result = prediction.tolist()
+        print("✅ Prediction successful!")
+        return {"prediction": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
