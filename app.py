@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 import tensorflow as tf
 import numpy as np
 import requests
@@ -56,9 +56,9 @@ async def home():
         "docs": "/docs for API documentation"
     }
 
-# ✅ Fix: Remove trailing slash in /predict
+# ✅ Updated `/predict` to allow both file & URL
 @app.post("/predict")
-async def predict(file: UploadFile = File(None), url: str = None):
+async def predict(file: UploadFile = File(None), url: str = Form(None)):
     """
     Predict the class of an uploaded image or an image from a URL.
     """
@@ -101,7 +101,7 @@ async def predict(file: UploadFile = File(None), url: str = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
-# ✅ Fix: Explicitly set host and port
+# ✅ Set proper deployment host & port
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))  # Use Render's assigned port
