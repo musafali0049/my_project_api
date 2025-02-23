@@ -102,9 +102,19 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
 
     # ✅ Make Prediction
     try:
-        prediction = model.predict(processed_image).tolist()
-        print(f"✅ Prediction: {prediction}")
-        return {"prediction": prediction}
+        prediction = model.predict(processed_image)
+        
+        # Define labels
+        labels = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]
+
+        # Get the predicted class index
+        predicted_index = np.argmax(prediction)
+
+        # Get the corresponding class label
+        predicted_class = labels[predicted_index]
+
+        print(f"✅ Prediction: {predicted_class}")
+        return {"prediction": predicted_class}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
