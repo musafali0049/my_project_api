@@ -99,22 +99,28 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
 
     # ✅ Convert to grayscale and preprocess
     processed_image = preprocess_image(image)
+    print(f"🔍 Processed image shape: {processed_image.shape}")  # Debugging
 
     # ✅ Make Prediction
     try:
         prediction = model.predict(processed_image)
-        
-        # Define labels
+        print(f"🔍 Raw model output: {prediction}")  # Debugging print
+
+        # ✅ Define labels
         labels = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]
 
-        # Get the predicted class index
-        predicted_index = np.argmax(prediction)
+        # ✅ Handle Multi-class and Binary cases
+        if len(prediction[0]) == 1:
+            predicted_class = "Pneumonia" if prediction[0][0] > 0.5 else "Normal"
+            confidence = float(prediction[0][0])
+        else:
+            predicted_index = int(np.argmax(prediction))
+            predicted_class = labels[predicted_index]
+            confidence = float(np.max(prediction))
 
-        # Get the corresponding class label
-        predicted_class = labels[predicted_index]
+        print(f"✅ Final Prediction: {predicted_class} (Confidence: {confidence:.2f})")
+        return {"prediction": predicted_class, "confidence": confidence}
 
-        print(f"✅ Prediction: {predicted_class}")
-        return {"prediction": predicted_class}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
