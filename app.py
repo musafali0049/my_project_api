@@ -9,9 +9,9 @@ import os
 
 # Initialize FastAPI
 app = FastAPI(
-    title="Pneumonia Classification API",
-    description="Upload an X-ray image to classify as Normal, Viral Pneumonia, or Bacterial Pneumonia.",
-    version="1.1",
+    title="Image Classification API",
+    description="Upload an image or provide a URL for classification.",
+    version="1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json"
@@ -40,22 +40,25 @@ if os.path.exists(MODEL_FILE_PATH):
 else:
     print("❌ Model file not found. Ensure model_weights.h5 is uploaded.")
 
-# Define class labels
-LABELS = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]
-
-# ✅ Preprocess function (Updated)
+# ✅ Preprocess function (Updated: Match test folder processing)
 def preprocess_image(image: Image.Image):
     try:
-        image = image.resize((150, 150))  # Ensure correct input size
-        image = np.array(image) / 255.0   # Normalize pixel values
-
-        # Check if the model expects grayscale or RGB
-        if len(image.shape) == 2:  # Grayscale image (H, W)
-            image = np.expand_dims(image, axis=-1)  # Add channel dimension
-        elif len(image.shape) == 3 and image.shape[-1] == 3:  # RGB image (H, W, 3)
-            image = np.mean(image, axis=-1, keepdims=True)  # Convert to grayscale
-
+        # Convert to grayscale
+        image = image.convert("L")
+        
+        # Resize to match model input
+        image = image.resize((150, 150))
+        
+        # Convert to numpy array
+        image = np.array(image)
+        
+        # Normalize pixel values (same as test folder processing)
+        image = image / 255.0
+        
+        # Expand dimensions to match model input
+        image = np.expand_dims(image, axis=-1)  # Add channel dimension (1 for grayscale)
         image = np.expand_dims(image, axis=0)  # Add batch dimension
+        
         return image.astype(np.float32)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image preprocessing error: {str(e)}")
@@ -64,7 +67,7 @@ def preprocess_image(image: Image.Image):
 @app.get("/")
 async def home():
     return {
-        "message": "Welcome to the Pneumonia Classification API!",
+        "message": "Welcome to the Image Classification API!",
         "usage": "Use /predict to classify images",
         "docs": "/docs for API documentation"
     }
@@ -73,7 +76,7 @@ async def home():
 @app.post("/predict")
 async def predict(file: UploadFile = File(None), url: str = Form(None)):
     """
-    Predict the type of pneumonia in an X-ray image.
+    Predict the class of an uploaded image or an image from a URL.
     """
     if model is None:
         raise HTTPException(status_code=500, detail="❌ Model failed to load.")
@@ -105,23 +108,24 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
     else:
         raise HTTPException(status_code=400, detail="No image provided.")
 
-    # ✅ Preprocess Image
+    # ✅ Convert to grayscale and preprocess
     processed_image = preprocess_image(image)
 
     # ✅ Make Prediction
     try:
-        prediction = model.predict(processed_image)[0]  # Extract first prediction
+        prediction = model.predict(processed_image)
         
-        # Debugging: Print raw predictions
-        print("🔍 Raw model output:", prediction)
-        
-        # Get the predicted class index & confidence
-        predicted_index = np.argmax(prediction)
-        predicted_class = LABELS[predicted_index]
-        confidence_score = float(prediction[predicted_index])  # Extract confidence score
+        # Define labels
+        labels = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]
 
-        print(f"✅ Final Prediction: {predicted_class} (Confidence: {confidence_score:.4f})")
-        return {"prediction": predicted_class, "confidence": confidence_score}
+        # Get the predicted class index
+        predicted_index = np.argmax(prediction)
+
+        # Get the corresponding class label
+        predicted_class = labels[predicted_index]
+
+        print(f"✅ Prediction: {predicted_class}")
+        return {"prediction": predicted_class, "confidence": prediction.tolist()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
