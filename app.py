@@ -10,8 +10,8 @@ import os
 # Initialize FastAPI
 app = FastAPI(
     title="Pneumonia Classification API",
-    description="Upload an X-ray image to classify it as Normal, Bacterial Pneumonia, or Viral Pneumonia.",
-    version="2.0",
+    description="Upload an image or provide a URL for classification.",
+    version="1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json"
@@ -40,43 +40,46 @@ if os.path.exists(MODEL_FILE_PATH):
 else:
     print("❌ Model file not found. Ensure model_weights.h5 is uploaded.")
 
-# ✅ Preprocess function
+# ✅ Correct Label Order
+LABELS = ["Normal", "Bacterial Pneumonia", "Viral Pneumonia"]
+
+# ✅ Preprocess function (Updated: Grayscale fix)
 def preprocess_image(image: Image.Image):
     try:
-        # Convert image to grayscale (model expects grayscale)
-        image = image.convert("L")
-
-        # Resize to match model input
+        # Resize image
         image = image.resize((150, 150))
-
+        
+        # Convert to grayscale if model requires it
+        image = image.convert("L")  # 'L' mode ensures grayscale
+        
         # Convert to numpy array
         image = np.array(image)
-
-        # Normalize pixel values
+        
+        # Normalize pixel values (0-1 scale)
         image = image / 255.0
-
+        
         # Expand dimensions to match model input
-        image = np.expand_dims(image, axis=-1)  # Add channel dimension (grayscale)
-        image = np.expand_dims(image, axis=0)  # Add batch dimension
-
+        image = np.expand_dims(image, axis=-1)  # Add channel dimension
+        image = np.expand_dims(image, axis=0)   # Add batch dimension
+        
         return image.astype(np.float32)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image preprocessing error: {str(e)}")
 
-# ✅ Root endpoint to check if API is running
+# ✅ Root endpoint
 @app.get("/")
 async def home():
     return {
         "message": "Welcome to the Pneumonia Classification API!",
-        "usage": "Use /predict to classify X-ray images.",
-        "docs": "/docs for API documentation."
+        "usage": "Use /predict to classify images",
+        "docs": "/docs for API documentation"
     }
 
-# ✅ `/predict` endpoint (Supports both file & URL)
+# ✅ `/predict` endpoint
 @app.post("/predict")
 async def predict(file: UploadFile = File(None), url: str = Form(None)):
     """
-    Predict the class of an uploaded X-ray image.
+    Predict the class of an uploaded image or an image from a URL.
     """
     if model is None:
         raise HTTPException(status_code=500, detail="❌ Model failed to load.")
@@ -114,23 +117,32 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
     # ✅ Make Prediction
     try:
         prediction = model.predict(processed_image)
-        print(f"🧠 Raw Model Output: {prediction}")
 
-        # Class labels in correct order
-        labels = ["Normal", "Bacterial Pneumonia", "Viral Pneumonia"]
+        # ✅ Check if model is using softmax (correct for multi-class)
+        if prediction.shape[-1] == 3:
+            probabilities = prediction[0]  # Softmax probabilities
+        else:
+            raise HTTPException(status_code=500, detail="❌ Model output shape mismatch.")
 
-        # Get the predicted class index
-        predicted_index = np.argmax(prediction[0])
+        # ✅ Get the predicted class index
+        predicted_index = np.argmax(probabilities)
 
-        # Get the corresponding class label
-        predicted_class = labels[predicted_index]
+        # ✅ Get the corresponding class label
+        predicted_class = LABELS[predicted_index]
 
-        print(f"✅ Final Prediction: {predicted_class}")
-        return {"prediction": predicted_class, "confidence_scores": prediction.tolist()}
+        # ✅ Get confidence score
+        confidence_score = probabilities[predicted_index]
+
+        print(f"✅ Prediction: {predicted_class} (Confidence: {confidence_score:.2f})")
+        return {
+            "prediction": predicted_class,
+            "confidence": confidence_score,
+            "raw_probabilities": probabilities.tolist()
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
-# ✅ Set proper deployment host & port
+# ✅ Run FastAPI on correct host/port
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))  # Use Render's assigned port
