@@ -40,25 +40,24 @@ if os.path.exists(MODEL_FILE_PATH):
 else:
     print("❌ Model file not found. Ensure model_weights.h5 is uploaded.")
 
-# ✅ Preprocess function (Updated: Match test folder processing)
+# Correct labels for classification
+labels = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]
+
+# ✅ Preprocess function (Updated)
 def preprocess_image(image: Image.Image):
     try:
-        # Resize to match model input
-        image = image.resize((150, 150))  # Ensure size is correct
-        
-        # Convert to numpy array
+        image = image.resize((150, 150))  # Resize to match model input
         image = np.array(image)
         
-        # If model expects grayscale, convert image
-        if len(image.shape) == 3 and image.shape[-1] == 3:
-            image = np.mean(image, axis=-1)  # Convert to grayscale if needed
+        # Ensure 3-channel RGB (in case of grayscale images)
+        if image.ndim == 2:
+            image = np.stack([image] * 3, axis=-1)  # Convert grayscale to RGB
         
-        # Normalize pixel values (check model expectations)
+        # Normalize pixel values
         image = image / 255.0
         
         # Expand dimensions to match model input
-        image = np.expand_dims(image, axis=-1)  # Add channel dimension (if needed)
-        image = np.expand_dims(image, axis=0)  # Add batch dimension
+        image = np.expand_dims(image, axis=0)
         
         return image.astype(np.float32)
     except Exception as e:
@@ -73,20 +72,17 @@ async def home():
         "docs": "/docs for API documentation"
     }
 
-# ✅ `/predict` endpoint (Supports both file & URL)
+# ✅ `/predict` endpoint
 @app.post("/predict")
 async def predict(file: UploadFile = File(None), url: str = Form(None)):
-    """
-    Predict the class of an uploaded image or an image from a URL.
-    """
     if model is None:
         raise HTTPException(status_code=500, detail="❌ Model failed to load.")
 
     if file and url:
         raise HTTPException(status_code=400, detail="Provide either a file or a URL, not both.")
 
-    image = None  # Initialize image variable
-
+    image = None
+    
     # Read image from file
     if file:
         try:
@@ -94,7 +90,7 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
             print("📂 Received image via file upload.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"File processing error: {str(e)}")
-
+    
     # Read image from URL
     elif url:
         try:
@@ -105,7 +101,6 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
             print("🌍 Received image via URL.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"URL processing error: {str(e)}")
-
     else:
         raise HTTPException(status_code=400, detail="No image provided.")
 
@@ -115,23 +110,20 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
     # ✅ Make Prediction
     try:
         prediction = model.predict(processed_image)
+        print(f"Raw model output: {prediction}")  # Debugging output
         
-        # Define correct labels based on model training
-        labels = ["Bacterial Pneumonia", "Viral Pneumonia"]
-
-        # Get the predicted class index
-        predicted_index = np.argmax(prediction)
-
-        # Get the corresponding class label
+        # Apply softmax for proper probability distribution
+        probabilities = tf.nn.softmax(prediction[0]).numpy()
+        predicted_index = np.argmax(probabilities)
         predicted_class = labels[predicted_index]
 
-        print(f"✅ Prediction: {predicted_class}")
-        return {"prediction": predicted_class, "confidence": prediction.tolist()}
+        print(f"✅ Prediction: {predicted_class} with confidence: {probabilities.tolist()}")
+        return {"prediction": predicted_class, "confidence": probabilities.tolist()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
 # ✅ Set proper deployment host & port
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.getenv("PORT", 8000))  # Use Render's assigned port
+    port = int(os.getenv("PORT", 8000))
     uvicorn.run(app, host="0.0.0.0", port=port)
