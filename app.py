@@ -1,92 +1,137 @@
-import os
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 import tensorflow as tf
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+import requests
 from PIL import Image
 from io import BytesIO
-import requests
+import zipfile
+import os
 
-# ✅ Initialize FastAPI
+# Initialize FastAPI
 app = FastAPI(
-    title="Pneumonia Classification API",
+    title="Image Classification API",
+    description="Upload an image or provide a URL for classification.",
     version="1.0",
-    description="Upload an X-ray image to classify pneumonia type."
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
-# ✅ Define Model Path
-MODEL_FILE_PATH = os.path.join(os.getcwd(), "model_weights.h5")
+# Paths for the model
+MODEL_ZIP_PATH = "model/model_weights.zip"
+MODEL_EXTRACTION_PATH = "model/"
+MODEL_FILE_PATH = os.path.join(MODEL_EXTRACTION_PATH, "model_weights.h5")
 
-# ✅ Check if model file exists
-if not os.path.exists(MODEL_FILE_PATH):
-    raise RuntimeError(f"❌ Model file not found at {MODEL_FILE_PATH}. Ensure model_weights.h5 is uploaded.")
+# Extract model if necessary
+if os.path.exists(MODEL_ZIP_PATH) and not os.path.exists(MODEL_FILE_PATH):
+    with zipfile.ZipFile(MODEL_ZIP_PATH, 'r') as zip_ref:
+        zip_ref.extractall(MODEL_EXTRACTION_PATH)
+        print("✅ Model extracted successfully.")
 
-# ✅ Load the Model
-try:
-    model = tf.keras.models.load_model(MODEL_FILE_PATH)
-    print("✅ Model loaded successfully.")
-except Exception as e:
-    raise RuntimeError(f"❌ Error loading model: {str(e)}")
+# Load model
+model = None
+if os.path.exists(MODEL_FILE_PATH):
+    try:
+        model = tf.keras.models.load_model(MODEL_FILE_PATH)
+        print("✅ Model loaded successfully.")
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
+        model = None
+else:
+    print("❌ Model file not found. Ensure model_weights.h5 is uploaded.")
 
-
-# ✅ Image Preprocessing Function
+# ✅ Preprocess function (Updated: Match test folder processing)
 def preprocess_image(image: Image.Image):
     try:
-        image = image.convert("L")  # Convert to grayscale
-        image = image.resize((150, 150))  # Resize to match model input
-        image = np.array(image) / 255.0  # Normalize pixel values
-        image = np.expand_dims(image, axis=-1)  # Add grayscale channel
+        # Resize to match model input
+        image = image.resize((150, 150))  # Ensure size is correct
+        
+        # Convert to numpy array
+        image = np.array(image)
+        
+        # If model expects grayscale, convert image
+        if len(image.shape) == 3 and image.shape[-1] == 3:
+            image = np.mean(image, axis=-1)  # Convert to grayscale if needed
+        
+        # Normalize pixel values (check model expectations)
+        image = image / 255.0
+        
+        # Expand dimensions to match model input
+        image = np.expand_dims(image, axis=-1)  # Add channel dimension (if needed)
         image = np.expand_dims(image, axis=0)  # Add batch dimension
+        
         return image.astype(np.float32)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image preprocessing error: {str(e)}")
 
-
-# ✅ Root Endpoint
+# ✅ Root endpoint to check if API is running
 @app.get("/")
 async def home():
-    return {"message": "Pneumonia Classification API is running!", "docs": "/docs"}
+    return {
+        "message": "Welcome to the Image Classification API!",
+        "usage": "Use /predict to classify images",
+        "docs": "/docs for API documentation"
+    }
 
-
-# ✅ Prediction Endpoint
+# ✅ `/predict` endpoint (Supports both file & URL)
 @app.post("/predict")
 async def predict(file: UploadFile = File(None), url: str = Form(None)):
+    """
+    Predict the class of an uploaded image or an image from a URL.
+    """
     if model is None:
         raise HTTPException(status_code=500, detail="❌ Model failed to load.")
 
-    if not file and not url:
-        raise HTTPException(status_code=400, detail="Provide either a file or a URL.")
+    if file and url:
+        raise HTTPException(status_code=400, detail="Provide either a file or a URL, not both.")
 
-    # ✅ Load image from file
+    image = None  # Initialize image variable
+
+    # Read image from file
     if file:
         try:
             image = Image.open(BytesIO(await file.read()))
+            print("📂 Received image via file upload.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"File processing error: {str(e)}")
 
-    # ✅ Load image from URL
+    # Read image from URL
     elif url:
         try:
             response = requests.get(url)
             if response.status_code != 200:
-                raise HTTPException(status_code=400, detail="Invalid image URL.")
+                raise HTTPException(status_code=400, detail="Invalid image URL or server error.")
             image = Image.open(BytesIO(response.content))
+            print("🌍 Received image via URL.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"URL processing error: {str(e)}")
 
-    # ✅ Preprocess and Predict
+    else:
+        raise HTTPException(status_code=400, detail="No image provided.")
+
+    # ✅ Preprocess image
     processed_image = preprocess_image(image)
+
+    # ✅ Make Prediction
     try:
         prediction = model.predict(processed_image)
-        labels = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]
+        
+        # Define correct labels based on model training
+        labels = ["Bacterial Pneumonia", "Viral Pneumonia"]
+
+        # Get the predicted class index
         predicted_index = np.argmax(prediction)
+
+        # Get the corresponding class label
         predicted_class = labels[predicted_index]
-        confidence = float(np.max(prediction))
-        return {"prediction": predicted_class, "confidence": confidence}
+
+        print(f"✅ Prediction: {predicted_class}")
+        return {"prediction": predicted_class, "confidence": prediction.tolist()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
-
-# ✅ Start FastAPI Server
+# ✅ Set proper deployment host & port
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8000)))
+    port = int(os.getenv("PORT", 8000))  # Use Render's assigned port
+    uvicorn.run(app, host="0.0.0.0", port=port)
