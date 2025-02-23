@@ -9,9 +9,9 @@ import os
 
 # Initialize FastAPI
 app = FastAPI(
-    title="Image Classification API",
-    description="Upload an image or provide a URL for classification.",
-    version="1.0",
+    title="Pneumonia Classification API",
+    description="Upload an X-ray image to classify as Normal, Viral Pneumonia, or Bacterial Pneumonia.",
+    version="1.1",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json"
@@ -40,13 +40,21 @@ if os.path.exists(MODEL_FILE_PATH):
 else:
     print("❌ Model file not found. Ensure model_weights.h5 is uploaded.")
 
-# ✅ Preprocess function (Updated: Match input shape to model expectations)
+# Define class labels
+LABELS = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]
+
+# ✅ Preprocess function (Updated)
 def preprocess_image(image: Image.Image):
     try:
-        image = image.convert("L")  # Convert to grayscale
-        image = image.resize((150, 150))  # Resize to match model input
-        image = np.array(image) / 255.0  # Normalize pixel values
-        image = np.expand_dims(image, axis=-1)  # Add channel dimension (1 for grayscale)
+        image = image.resize((150, 150))  # Ensure correct input size
+        image = np.array(image) / 255.0   # Normalize pixel values
+
+        # Check if the model expects grayscale or RGB
+        if len(image.shape) == 2:  # Grayscale image (H, W)
+            image = np.expand_dims(image, axis=-1)  # Add channel dimension
+        elif len(image.shape) == 3 and image.shape[-1] == 3:  # RGB image (H, W, 3)
+            image = np.mean(image, axis=-1, keepdims=True)  # Convert to grayscale
+
         image = np.expand_dims(image, axis=0)  # Add batch dimension
         return image.astype(np.float32)
     except Exception as e:
@@ -56,7 +64,7 @@ def preprocess_image(image: Image.Image):
 @app.get("/")
 async def home():
     return {
-        "message": "Welcome to the Image Classification API!",
+        "message": "Welcome to the Pneumonia Classification API!",
         "usage": "Use /predict to classify images",
         "docs": "/docs for API documentation"
     }
@@ -65,7 +73,7 @@ async def home():
 @app.post("/predict")
 async def predict(file: UploadFile = File(None), url: str = Form(None)):
     """
-    Predict the class of an uploaded image or an image from a URL.
+    Predict the type of pneumonia in an X-ray image.
     """
     if model is None:
         raise HTTPException(status_code=500, detail="❌ Model failed to load.")
@@ -78,7 +86,7 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
     # Read image from file
     if file:
         try:
-            image = Image.open(BytesIO(await file.read())).convert("RGB")
+            image = Image.open(BytesIO(await file.read()))
             print("📂 Received image via file upload.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"File processing error: {str(e)}")
@@ -89,7 +97,7 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
             response = requests.get(url)
             if response.status_code != 200:
                 raise HTTPException(status_code=400, detail="Invalid image URL or server error.")
-            image = Image.open(BytesIO(response.content)).convert("RGB")
+            image = Image.open(BytesIO(response.content))
             print("🌍 Received image via URL.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"URL processing error: {str(e)}")
@@ -97,30 +105,23 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
     else:
         raise HTTPException(status_code=400, detail="No image provided.")
 
-    # ✅ Convert to grayscale and preprocess
+    # ✅ Preprocess Image
     processed_image = preprocess_image(image)
-    print(f"🔍 Processed image shape: {processed_image.shape}")  # Debugging
 
     # ✅ Make Prediction
     try:
-        prediction = model.predict(processed_image)
-        print(f"🔍 Raw model output: {prediction}")  # Debugging print
+        prediction = model.predict(processed_image)[0]  # Extract first prediction
+        
+        # Debugging: Print raw predictions
+        print("🔍 Raw model output:", prediction)
+        
+        # Get the predicted class index & confidence
+        predicted_index = np.argmax(prediction)
+        predicted_class = LABELS[predicted_index]
+        confidence_score = float(prediction[predicted_index])  # Extract confidence score
 
-        # ✅ Define labels
-        labels = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]
-
-        # ✅ Handle Multi-class and Binary cases
-        if len(prediction[0]) == 1:
-            predicted_class = "Pneumonia" if prediction[0][0] > 0.5 else "Normal"
-            confidence = float(prediction[0][0])
-        else:
-            predicted_index = int(np.argmax(prediction))
-            predicted_class = labels[predicted_index]
-            confidence = float(np.max(prediction))
-
-        print(f"✅ Final Prediction: {predicted_class} (Confidence: {confidence:.2f})")
-        return {"prediction": predicted_class, "confidence": confidence}
-
+        print(f"✅ Final Prediction: {predicted_class} (Confidence: {confidence_score:.4f})")
+        return {"prediction": predicted_class, "confidence": confidence_score}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
