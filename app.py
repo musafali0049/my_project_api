@@ -9,7 +9,7 @@ import os
 
 # Initialize FastAPI
 app = FastAPI(
-    title="Pneumonia Classification API",
+    title="Image Classification API",
     description="Upload an image or provide a URL for classification.",
     version="1.0",
     docs_url="/docs",
@@ -40,27 +40,18 @@ if os.path.exists(MODEL_FILE_PATH):
 else:
     print("❌ Model file not found. Ensure model_weights.h5 is uploaded.")
 
-# ✅ Correct Label Order
-LABELS = ["Normal", "Bacterial Pneumonia", "Viral Pneumonia"]
-
-# ✅ Preprocess function (Updated: Grayscale fix)
+# ✅ Preprocess function (Updated)
 def preprocess_image(image: Image.Image):
     try:
-        # Resize image
-        image = image.resize((150, 150))
-        
-        # Convert to grayscale if model requires it
-        image = image.convert("L")  # 'L' mode ensures grayscale
-        
-        # Convert to numpy array
+        image = image.resize((150, 150))  # Ensure size is correct
         image = np.array(image)
         
-        # Normalize pixel values (0-1 scale)
-        image = image / 255.0
+        # Ensure it's in the correct format
+        if len(image.shape) == 2:  # If grayscale, convert to 3-channel
+            image = np.stack((image,) * 3, axis=-1)
         
-        # Expand dimensions to match model input
-        image = np.expand_dims(image, axis=-1)  # Add channel dimension
-        image = np.expand_dims(image, axis=0)   # Add batch dimension
+        image = image / 255.0  # Normalize pixel values
+        image = np.expand_dims(image, axis=0)  # Add batch dimension
         
         return image.astype(np.float32)
     except Exception as e:
@@ -70,7 +61,7 @@ def preprocess_image(image: Image.Image):
 @app.get("/")
 async def home():
     return {
-        "message": "Welcome to the Pneumonia Classification API!",
+        "message": "Welcome to the Image Classification API!",
         "usage": "Use /predict to classify images",
         "docs": "/docs for API documentation"
     }
@@ -78,17 +69,14 @@ async def home():
 # ✅ `/predict` endpoint
 @app.post("/predict")
 async def predict(file: UploadFile = File(None), url: str = Form(None)):
-    """
-    Predict the class of an uploaded image or an image from a URL.
-    """
     if model is None:
         raise HTTPException(status_code=500, detail="❌ Model failed to load.")
-
+    
     if file and url:
         raise HTTPException(status_code=400, detail="Provide either a file or a URL, not both.")
 
     image = None  # Initialize image variable
-
+    
     # Read image from file
     if file:
         try:
@@ -96,7 +84,7 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
             print("📂 Received image via file upload.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"File processing error: {str(e)}")
-
+    
     # Read image from URL
     elif url:
         try:
@@ -107,42 +95,30 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
             print("🌍 Received image via URL.")
         except Exception as e:
             raise HTTPException(status_code=400, detail=f"URL processing error: {str(e)}")
-
     else:
         raise HTTPException(status_code=400, detail="No image provided.")
 
     # ✅ Preprocess image
     processed_image = preprocess_image(image)
-
+    
     # ✅ Make Prediction
     try:
         prediction = model.predict(processed_image)
+        
+        # Fix: Ensure model output matches expected shape
+        if prediction.shape[-1] != 3:
+            raise HTTPException(status_code=500, detail="500: ❌ Model output shape mismatch.")
+        
+        labels = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]  # Corrected order
+        predicted_index = np.argmax(prediction)  # Get predicted class index
+        predicted_class = labels[predicted_index]  # Get corresponding class label
 
-        # ✅ Check if model is using softmax (correct for multi-class)
-        if prediction.shape[-1] == 3:
-            probabilities = prediction[0]  # Softmax probabilities
-        else:
-            raise HTTPException(status_code=500, detail="❌ Model output shape mismatch.")
-
-        # ✅ Get the predicted class index
-        predicted_index = np.argmax(probabilities)
-
-        # ✅ Get the corresponding class label
-        predicted_class = LABELS[predicted_index]
-
-        # ✅ Get confidence score
-        confidence_score = probabilities[predicted_index]
-
-        print(f"✅ Prediction: {predicted_class} (Confidence: {confidence_score:.2f})")
-        return {
-            "prediction": predicted_class,
-            "confidence": confidence_score,
-            "raw_probabilities": probabilities.tolist()
-        }
+        print(f"✅ Prediction: {predicted_class}")
+        return {"prediction": predicted_class, "confidence": prediction.tolist()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
-# ✅ Run FastAPI on correct host/port
+# ✅ Deployment
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 8000))  # Use Render's assigned port
