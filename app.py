@@ -43,26 +43,26 @@ else:
 # ✅ Correct Label Order
 LABELS = ["Normal", "Bacterial Pneumonia", "Viral Pneumonia"]
 
-# ✅ Preprocess function (Updated: Ensures grayscale input)
+# ✅ Preprocess function (Updated: Grayscale Fix & Shape Check)
 def preprocess_image(image: Image.Image):
     try:
         # Resize image
         image = image.resize((150, 150))
         
-        # Convert to grayscale (Ensures single channel input)
+        # Convert to grayscale if model requires it
         image = image.convert("L")  # 'L' mode ensures grayscale
         
         # Convert to numpy array
-        image = np.array(image)
+        image = np.array(image, dtype=np.float32)
         
         # Normalize pixel values (0-1 scale)
         image = image / 255.0
         
         # Expand dimensions to match model input
-        image = np.expand_dims(image, axis=-1)  # Add channel dimension (1 channel)
-        image = np.expand_dims(image, axis=0)   # Add batch dimension
+        image = np.expand_dims(image, axis=-1)  # Add channel dimension (1, 150, 150, 1)
+        image = np.expand_dims(image, axis=0)   # Add batch dimension (1, 150, 150, 1)
         
-        return image.astype(np.float32)
+        return image
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image preprocessing error: {str(e)}")
 
@@ -118,14 +118,20 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
     try:
         prediction = model.predict(processed_image)
 
-        # ✅ Ensure model output shape is correct
-        if prediction.shape[-1] != 3:
+        # ✅ Ensure model output shape matches expected 3-class output
+        if prediction.shape[-1] == 3:
+            probabilities = prediction[0]  # Softmax probabilities
+        else:
             raise HTTPException(status_code=500, detail="❌ Model output shape mismatch.")
 
-        probabilities = prediction[0]  # Extract probabilities
-        predicted_index = np.argmax(probabilities)  # Get index of max probability
-        predicted_class = LABELS[predicted_index]  # Get corresponding label
-        confidence_score = probabilities[predicted_index]  # Get confidence score
+        # ✅ Get the predicted class index
+        predicted_index = np.argmax(probabilities)
+
+        # ✅ Get the corresponding class label
+        predicted_class = LABELS[predicted_index]
+
+        # ✅ Get confidence score
+        confidence_score = probabilities[predicted_index]
 
         print(f"✅ Prediction: {predicted_class} (Confidence: {confidence_score:.2f})")
         return {
