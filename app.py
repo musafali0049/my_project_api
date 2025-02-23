@@ -40,14 +40,13 @@ if os.path.exists(MODEL_FILE_PATH):
 else:
     print("❌ Model file not found. Ensure model_weights.h5 is uploaded.")
 
-# ✅ Preprocess function (Updated: Converts image to Grayscale)
+# ✅ Preprocess function (Updated: Match input shape to model expectations)
 def preprocess_image(image: Image.Image):
     try:
         image = image.convert("L")  # Convert to grayscale
-        image = image.resize((224, 224))  # Resize to match model input
+        image = image.resize((80, 80))  # Resize to match model input
         image = np.array(image) / 255.0  # Normalize pixel values
-        image = np.expand_dims(image, axis=-1)  # Add channel dimension (1 for grayscale)
-        image = np.expand_dims(image, axis=0)  # Add batch dimension
+        image = image.reshape((1, 6400))  # Flatten to match model's Dense layer input
         return image.astype(np.float32)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image preprocessing error: {str(e)}")
