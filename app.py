@@ -33,7 +33,7 @@ model = None
 if os.path.exists(MODEL_FILE_PATH):
     try:
         model = tf.keras.models.load_model(MODEL_FILE_PATH)
-        print("✅ Model loaded successfully.")
+        print(f"✅ Model loaded successfully. Expected input shape: {model.input_shape}")
     except Exception as e:
         print(f"❌ Error loading model: {e}")
         model = None
@@ -43,26 +43,32 @@ else:
 # ✅ Correct Label Order
 LABELS = ["Normal", "Bacterial Pneumonia", "Viral Pneumonia"]
 
-# ✅ Preprocess function (Updated: Grayscale Fix & Shape Check)
+# ✅ Preprocess function (Updated: Handles grayscale & RGB cases)
 def preprocess_image(image: Image.Image):
     try:
-        # Resize image
+        # Resize image to (150, 150)
         image = image.resize((150, 150))
-        
-        # Convert to grayscale if model requires it
-        image = image.convert("L")  # 'L' mode ensures grayscale
+
+        # Convert to grayscale if model expects 1 channel
+        if model.input_shape[-1] == 1:
+            image = image.convert("L")  # Convert to grayscale
+        else:
+            image = image.convert("RGB")  # Ensure RGB if needed
         
         # Convert to numpy array
-        image = np.array(image, dtype=np.float32)
-        
+        image = np.array(image)
+
         # Normalize pixel values (0-1 scale)
         image = image / 255.0
-        
+
         # Expand dimensions to match model input
-        image = np.expand_dims(image, axis=-1)  # Add channel dimension (1, 150, 150, 1)
-        image = np.expand_dims(image, axis=0)   # Add batch dimension (1, 150, 150, 1)
-        
-        return image
+        if model.input_shape[-1] == 1:
+            image = np.expand_dims(image, axis=-1)  # Add channel dimension for grayscale
+        image = np.expand_dims(image, axis=0)  # Add batch dimension
+
+        print(f"✅ Preprocessed Image Shape: {image.shape}")  # Should match model.input_shape
+
+        return image.astype(np.float32)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Image preprocessing error: {str(e)}")
 
@@ -118,8 +124,11 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
     try:
         prediction = model.predict(processed_image)
 
-        # ✅ Ensure model output shape matches expected 3-class output
-        if prediction.shape[-1] == 3:
+        # ✅ Debugging: Print raw predictions
+        print(f"🔍 Raw Model Output: {prediction}")
+
+        # ✅ Ensure correct output shape
+        if prediction.shape[-1] == len(LABELS):
             probabilities = prediction[0]  # Softmax probabilities
         else:
             raise HTTPException(status_code=500, detail="❌ Model output shape mismatch.")
