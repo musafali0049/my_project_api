@@ -9,9 +9,9 @@ import os
 
 # Initialize FastAPI
 app = FastAPI(
-    title="Image Classification API",
-    description="Upload an image or provide a URL for classification.",
-    version="1.0",
+    title="Pneumonia Classification API",
+    description="Upload an X-ray image to classify it as Normal, Bacterial Pneumonia, or Viral Pneumonia.",
+    version="2.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json"
@@ -40,11 +40,11 @@ if os.path.exists(MODEL_FILE_PATH):
 else:
     print("❌ Model file not found. Ensure model_weights.h5 is uploaded.")
 
-# ✅ Preprocess function (Updated to match expected grayscale input)
+# ✅ Preprocess function
 def preprocess_image(image: Image.Image):
     try:
-        # Convert to grayscale (if necessary)
-        image = image.convert("L")  # "L" mode ensures grayscale
+        # Convert image to grayscale (model expects grayscale)
+        image = image.convert("L")
 
         # Resize to match model input
         image = image.resize((150, 150))
@@ -52,11 +52,11 @@ def preprocess_image(image: Image.Image):
         # Convert to numpy array
         image = np.array(image)
 
-        # Normalize pixel values (assuming model was trained on normalized images)
+        # Normalize pixel values
         image = image / 255.0
 
-        # Expand dimensions to match model input shape (batch size, height, width, channels)
-        image = np.expand_dims(image, axis=-1)  # Add grayscale channel dimension
+        # Expand dimensions to match model input
+        image = np.expand_dims(image, axis=-1)  # Add channel dimension (grayscale)
         image = np.expand_dims(image, axis=0)  # Add batch dimension
 
         return image.astype(np.float32)
@@ -67,16 +67,16 @@ def preprocess_image(image: Image.Image):
 @app.get("/")
 async def home():
     return {
-        "message": "Welcome to the Image Classification API!",
-        "usage": "Use /predict to classify images",
-        "docs": "/docs for API documentation"
+        "message": "Welcome to the Pneumonia Classification API!",
+        "usage": "Use /predict to classify X-ray images.",
+        "docs": "/docs for API documentation."
     }
 
 # ✅ `/predict` endpoint (Supports both file & URL)
 @app.post("/predict")
 async def predict(file: UploadFile = File(None), url: str = Form(None)):
     """
-    Predict the class of an uploaded image or an image from a URL.
+    Predict the class of an uploaded X-ray image.
     """
     if model is None:
         raise HTTPException(status_code=500, detail="❌ Model failed to load.")
@@ -114,18 +114,19 @@ async def predict(file: UploadFile = File(None), url: str = Form(None)):
     # ✅ Make Prediction
     try:
         prediction = model.predict(processed_image)
-        
-        # Define correct labels based on model training
-        labels = ["Normal", "Viral Pneumonia", "Bacterial Pneumonia"]
+        print(f"🧠 Raw Model Output: {prediction}")
+
+        # Class labels in correct order
+        labels = ["Normal", "Bacterial Pneumonia", "Viral Pneumonia"]
 
         # Get the predicted class index
-        predicted_index = np.argmax(prediction)
+        predicted_index = np.argmax(prediction[0])
 
         # Get the corresponding class label
         predicted_class = labels[predicted_index]
 
-        print(f"✅ Prediction: {predicted_class}")
-        return {"prediction": predicted_class, "confidence": prediction.tolist()}
+        print(f"✅ Final Prediction: {predicted_class}")
+        return {"prediction": predicted_class, "confidence_scores": prediction.tolist()}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
