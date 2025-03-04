@@ -36,11 +36,18 @@ def predict():
         
         image = Image.open(BytesIO(response.content)).convert('RGB')
         image = transform(image).unsqueeze(0)
-        
+
         # Perform prediction
         with torch.no_grad():
             output = model(image)
-            prediction = torch.argmax(output, dim=1).item()
+
+            # Check output shape
+            if len(output.shape) == 1:
+                prediction = output.item()  # For single-value regression
+            elif output.shape[1] == 1:
+                prediction = torch.sigmoid(output).item()  # Binary classification
+            else:
+                prediction = torch.argmax(output, dim=1).item()  # Multi-class classification
         
         return jsonify({'prediction': prediction})
     
