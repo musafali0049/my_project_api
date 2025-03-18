@@ -7,13 +7,14 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Load the TensorFlow model
-model = tf.keras.models.load_model("model/model_weights.h5")  # Updated path
+# Load the TensorFlow model (updated path)
+MODEL_PATH = "model/model_weights.h5"
+model = tf.keras.models.load_model(MODEL_PATH)
 
-# Define image preprocessing function
+# Image preprocessing function
 def preprocess_image(image):
-    image = image.resize((224, 224))
-    image = np.array(image) / 255.0  # Normalize
+    image = image.resize((224, 224))  # Resize image to match model input
+    image = np.array(image) / 255.0   # Normalize pixel values
     image = np.expand_dims(image, axis=0)  # Add batch dimension
     return image
 
@@ -35,7 +36,7 @@ def predict():
 
         # Perform prediction
         prediction = model.predict(image)
-        prediction = prediction.tolist()  # Convert to Python list for JSON serialization
+        prediction = prediction.tolist()  # Convert to JSON serializable format
         
         return jsonify({'prediction': prediction})
     
@@ -43,4 +44,4 @@ def predict():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=8000)  # Ensure correct port usage
