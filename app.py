@@ -20,11 +20,17 @@ def preprocess_image(image):
     image = np.expand_dims(image, axis=0)  # Add batch dimension
     return image
 
+@app.route('/')
+def home():
+    return "Welcome to the Prediction API! Use /predict to make predictions."
+
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        data = request.get_json()  # Get JSON data from the request
+        # Extract the image URL from the request
+        data = request.get_json()
         image_url = data.get('image_url')
+        
         if not image_url:
             return jsonify({'error': 'No image URL provided'}), 400
         
@@ -52,6 +58,7 @@ def predict_gradio(image):
     prediction = model.predict(image)
     return prediction.tolist()
 
+# Gradio interface setup
 iface = gr.Interface(fn=predict_gradio, inputs=gr.Image(), outputs=gr.Label())
 
 # Run Flask and Gradio together
