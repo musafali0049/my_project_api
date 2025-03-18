@@ -8,7 +8,7 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 
 # Load the TensorFlow model
-model = tf.keras.models.load_model("model_weights.h5")
+model = tf.keras.models.load_model("model/model_weights.h5")  # Updated path
 
 # Define image preprocessing function
 def preprocess_image(image):
