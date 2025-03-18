@@ -4,6 +4,7 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
 import requests
 from io import BytesIO
+from PIL import Image  # Ensure PIL is imported for Image processing
 from flask import Flask, request, jsonify
 from flask_cors import CORS  # For enabling CORS
 
@@ -22,7 +23,7 @@ def preprocess_image(image):
     # Resize and convert image to grayscale
     image = image.convert('L')  # Convert to grayscale
     image = image.resize((224, 224))  # Resize to match model input size
-    img_array = image.img_to_array(image)  # Convert to numpy array
+    img_array = np.array(image)  # Convert image to numpy array
     img_array = img_array / 255.0  # Normalize to [0, 1]
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
     return img_array
