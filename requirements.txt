@@ -4,4 +4,7 @@ tensorflow-cpu
 pillow
 gunicorn
 requests
-python-multipart 
+python-multipart
+flask
+Flask
+uvicorn
