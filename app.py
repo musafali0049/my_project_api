@@ -1,25 +1,21 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import torchvision.transforms as transforms
-from PIL import Image
-from flask import Flask, request, jsonify
+import tensorflow as tf
+import numpy as np
 import requests
 from io import BytesIO
+from PIL import Image
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
-# Load the model (adjust model path if needed)
-model_path = "model_weights.pth"
-model = torch.load(model_path, map_location=torch.device('cpu'))
-model.eval()
+# Load the TensorFlow model
+model = tf.keras.models.load_model("model_weights.h5")
 
-# Define image transformation
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-])
+# Define image preprocessing function
+def preprocess_image(image):
+    image = image.resize((224, 224))
+    image = np.array(image) / 255.0  # Normalize
+    image = np.expand_dims(image, axis=0)  # Add batch dimension
+    return image
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -35,19 +31,11 @@ def predict():
             return jsonify({'error': 'Failed to fetch image'}), 400
         
         image = Image.open(BytesIO(response.content)).convert('RGB')
-        image = transform(image).unsqueeze(0)
+        image = preprocess_image(image)
 
         # Perform prediction
-        with torch.no_grad():
-            output = model(image)
-
-            # Check output shape
-            if len(output.shape) == 1:
-                prediction = output.item()  # For single-value regression
-            elif output.shape[1] == 1:
-                prediction = torch.sigmoid(output).item()  # Binary classification
-            else:
-                prediction = torch.argmax(output, dim=1).item()  # Multi-class classification
+        prediction = model.predict(image)
+        prediction = prediction.tolist()  # Convert to Python list for JSON serialization
         
         return jsonify({'prediction': prediction})
     
