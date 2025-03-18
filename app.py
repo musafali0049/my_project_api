@@ -7,6 +7,7 @@ from io import BytesIO
 from PIL import Image  # Ensure PIL is imported for Image processing
 from flask import Flask, request, jsonify
 from flask_cors import CORS  # For enabling CORS
+import os  # Import os to handle dynamic port binding
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -62,6 +63,7 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Start the Flask app
+# Start the Flask app with dynamic port binding
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000, debug=False)
+    port = int(os.environ.get("PORT", 10000))  # Default to 10000 if no port is found
+    app.run(host='0.0.0.0', port=port, debug=False)
