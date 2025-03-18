@@ -15,8 +15,10 @@ model = tf.keras.models.load_model(MODEL_PATH)
 
 # Image preprocessing function
 def preprocess_image(image):
+    image = image.convert('L')  # Convert to grayscale
     image = image.resize((224, 224))  # Resize image to match model input
     image = np.array(image) / 255.0   # Normalize pixel values
+    image = np.expand_dims(image, axis=-1)  # Add channel dimension for grayscale (1 channel)
     image = np.expand_dims(image, axis=0)  # Add batch dimension
     return image
 
