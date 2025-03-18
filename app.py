@@ -4,6 +4,7 @@ import requests
 from io import BytesIO
 from PIL import Image
 from flask import Flask, request, jsonify
+import gradio as gr
 
 app = Flask(__name__)
 
@@ -43,5 +44,24 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# Gradio interface function
+def predict_gradio(image):
+    image = Image.fromarray(image)
+    image = preprocess_image(image)
+    prediction = model.predict(image)
+    return prediction.tolist()
+
+iface = gr.Interface(fn=predict_gradio, inputs=gr.Image(), outputs=gr.Label())
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000)  # Ensure correct port usage
+    from threading import Thread
+    
+    # Run Flask in a separate thread
+    def run_flask():
+        app.run(host='0.0.0.0', port=8000)
+    
+    flask_thread = Thread(target=run_flask)
+    flask_thread.start()
+    
+    # Run Gradio UI
+    iface.launch()
