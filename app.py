@@ -1,15 +1,15 @@
-import tensorflow as tf
-import numpy as np
-import requests
-from io import BytesIO
-from PIL import Image
 from flask import Flask, request, jsonify
 import gradio as gr
+import tensorflow as tf
+import numpy as np
+from PIL import Image
+import requests
+from io import BytesIO
 import threading
 
 app = Flask(__name__)
 
-# Load the TensorFlow model (updated path)
+# Load the TensorFlow model (update the path)
 MODEL_PATH = "model/model_weights.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
@@ -20,6 +20,16 @@ def preprocess_image(image):
     image = np.expand_dims(image, axis=0)  # Add batch dimension
     return image
 
+# Gradio interface function
+def predict_gradio(image):
+    image = Image.fromarray(image)
+    image = preprocess_image(image)
+    prediction = model.predict(image)
+    return prediction.tolist()
+
+iface = gr.Interface(fn=predict_gradio, inputs=gr.Image(), outputs=gr.Label())
+
+# Flask API route
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -45,19 +55,9 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Gradio interface function
-def predict_gradio(image):
-    image = Image.fromarray(image)
-    image = preprocess_image(image)
-    prediction = model.predict(image)
-    return prediction.tolist()
-
-iface = gr.Interface(fn=predict_gradio, inputs=gr.Image(), outputs=gr.Label())
-
 # Run Flask and Gradio together
 if __name__ == '__main__':
-    # Flask app on Render will run on port 10000
     threading.Thread(target=lambda: app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)).start()
     
-    # Gradio interface, running on a separate port, e.g., 7860
+    # Gradio interface, running on a separate port (e.g., 7860)
     iface.launch(server_name="0.0.0.0", server_port=7860, share=True)
