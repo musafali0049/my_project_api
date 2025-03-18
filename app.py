@@ -5,6 +5,7 @@ from io import BytesIO
 from PIL import Image
 from flask import Flask, request, jsonify
 import gradio as gr
+import threading
 
 app = Flask(__name__)
 
@@ -53,15 +54,7 @@ def predict_gradio(image):
 
 iface = gr.Interface(fn=predict_gradio, inputs=gr.Image(), outputs=gr.Label())
 
+# Run Flask and Gradio together
 if __name__ == '__main__':
-    from threading import Thread
-    
-    # Run Flask in a separate thread
-    def run_flask():
-        app.run(host='0.0.0.0', port=8000)
-    
-    flask_thread = Thread(target=run_flask)
-    flask_thread.start()
-    
-    # Run Gradio UI
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)).start()
     iface.launch()
