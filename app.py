@@ -9,8 +9,8 @@ import threading
 
 app = Flask(__name__)
 
-# Load the trained model (update the path if needed)
-MODEL_PATH = "models/model_weights.h5"  # Ensure your model is in the 'models' directory
+# Load the trained model (update path if needed)
+MODEL_PATH = "model/model_weights.h5"  # Ensure this path is correct and model file is uploaded correctly
 model = tf.keras.models.load_model(MODEL_PATH)
 
 # Define the class labels (ensure this matches your training setup)
