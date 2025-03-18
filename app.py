@@ -1,26 +1,28 @@
 import tensorflow as tf
 import numpy as np
+from PIL import Image
 import requests
 from io import BytesIO
-from PIL import Image
 from flask import Flask, request, jsonify
 import gradio as gr
-import threading
 
 app = Flask(__name__)
 
-# Load the TensorFlow model (updated path)
-MODEL_PATH = "model/model_weights.h5"
+# Load the trained model (update path if needed)
+MODEL_PATH = "model/densenet_pneumonia_model.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
-# Image preprocessing function
+# Define the class labels (ensure this matches your training setup)
+class_labels = ['BAC_PNEUMONIA', 'NORMAL', 'VIR_PNEUMONIA']
+
+# Image preprocessing function to match the Colab setup
 def preprocess_image(image):
     image = image.convert('L')  # Convert to grayscale
-    image = image.resize((224, 224))  # Resize image to match model input
-    image = np.array(image) / 255.0   # Normalize pixel values
-    image = np.expand_dims(image, axis=-1)  # Add channel dimension for grayscale (1 channel)
-    image = np.expand_dims(image, axis=0)  # Add batch dimension
-    return image
+    image = image.resize((224, 224))  # Resize to match model input size
+    img_array = np.array(image) / 255.0  # Normalize to [0, 1]
+    img_array = np.expand_dims(img_array, axis=-1)  # Add channel dimension for grayscale (1 channel)
+    img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
+    return img_array
 
 @app.route('/')
 def home():
@@ -36,29 +38,37 @@ def predict():
         if not image_url:
             return jsonify({'error': 'No image URL provided'}), 400
         
-        # Fetch image from URL
+        # Fetch the image from URL
         response = requests.get(image_url)
         if response.status_code != 200:
             return jsonify({'error': 'Failed to fetch image'}), 400
         
-        image = Image.open(BytesIO(response.content)).convert('RGB')
-        image = preprocess_image(image)
+        image = Image.open(BytesIO(response.content))
+        img_array = preprocess_image(image)
 
-        # Perform prediction
-        prediction = model.predict(image)
-        prediction = prediction.tolist()  # Convert to JSON serializable format
-        
-        return jsonify({'prediction': prediction})
+        # Make a prediction
+        predictions = model.predict(img_array)
+        predicted_class = np.argmax(predictions)  # Get the class with the highest probability
+
+        # Prepare the prediction response
+        result = class_labels[predicted_class]
+        probabilities = {class_labels[i]: predictions[0][i] * 100 for i in range(len(class_labels))}
+
+        return jsonify({
+            'prediction': result,
+            'probabilities': probabilities
+        })
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Gradio interface function
+# Gradio interface function for image upload
 def predict_gradio(image):
     image = Image.fromarray(image)
-    image = preprocess_image(image)
-    prediction = model.predict(image)
-    return prediction.tolist()
+    img_array = preprocess_image(image)
+    predictions = model.predict(img_array)
+    predicted_class = np.argmax(predictions)  # Get the class with the highest probability
+    return class_labels[predicted_class]
 
 # Gradio interface setup
 iface = gr.Interface(fn=predict_gradio, inputs=gr.Image(), outputs=gr.Label())
