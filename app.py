@@ -20,16 +20,10 @@ def preprocess_image(image):
     image = np.expand_dims(image, axis=0)  # Add batch dimension
     return image
 
-# Root route to prevent 404 error
-@app.route('/')
-def home():
-    return "Welcome to the Prediction API! Use /predict to make predictions."
-
-# Prediction route
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
-        data = request.get_json()
+        data = request.get_json()  # Get JSON data from the request
         image_url = data.get('image_url')
         if not image_url:
             return jsonify({'error': 'No image URL provided'}), 400
