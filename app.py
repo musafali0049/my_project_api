@@ -1,10 +1,11 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS  # Import CORS
-import tensorflow as tf
 import numpy as np
-from PIL import Image
+import tensorflow as tf
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing import image
 import requests
 from io import BytesIO
+from flask import Flask, request, jsonify
+from flask_cors import CORS  # For enabling CORS
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -16,12 +17,13 @@ model = tf.keras.models.load_model(MODEL_PATH)
 # Define the class labels (ensure this matches your training setup)
 class_labels = ['BAC_PNEUMONIA', 'NORMAL', 'VIR_PNEUMONIA']
 
-# Image preprocessing function
+# Image preprocessing function to match the specification
 def preprocess_image(image):
+    # Resize and convert image to grayscale
     image = image.convert('L')  # Convert to grayscale
     image = image.resize((224, 224))  # Resize to match model input size
-    img_array = np.array(image) / 255.0  # Normalize to [0, 1]
-    img_array = np.expand_dims(img_array, axis=-1)  # Add channel dimension for grayscale
+    img_array = image.img_to_array(image)  # Convert to numpy array
+    img_array = img_array / 255.0  # Normalize to [0, 1]
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
     return img_array
 
@@ -35,7 +37,7 @@ def predict():
         if not image_url:
             return jsonify({'error': 'No image URL provided'}), 400
         
-        # Fetch the image from URL
+        # Fetch the image from the URL
         response = requests.get(image_url)
         if response.status_code != 200:
             return jsonify({'error': 'Failed to fetch image'}), 400
