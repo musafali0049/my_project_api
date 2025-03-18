@@ -1,33 +1,29 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS  # Import CORS
 import tensorflow as tf
 import numpy as np
 from PIL import Image
 import requests
 from io import BytesIO
-from flask import Flask, request, jsonify
-import gradio as gr
-import threading
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 
-# Load the trained model (update path if needed)
-MODEL_PATH = "model/model_weights.h5"  # Ensure this path is correct and model file is uploaded correctly
+# Load the trained model (ensure this path is correct and model file is uploaded correctly)
+MODEL_PATH = "model/model_weights.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
 # Define the class labels (ensure this matches your training setup)
 class_labels = ['BAC_PNEUMONIA', 'NORMAL', 'VIR_PNEUMONIA']
 
-# Image preprocessing function to match the Colab setup
+# Image preprocessing function
 def preprocess_image(image):
     image = image.convert('L')  # Convert to grayscale
     image = image.resize((224, 224))  # Resize to match model input size
     img_array = np.array(image) / 255.0  # Normalize to [0, 1]
-    img_array = np.expand_dims(img_array, axis=-1)  # Add channel dimension for grayscale (1 channel)
+    img_array = np.expand_dims(img_array, axis=-1)  # Add channel dimension for grayscale
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
     return img_array
-
-@app.route('/')
-def home():
-    return "Welcome to the Prediction API! Use /predict to make predictions."
 
 @app.route('/predict', methods=['POST'])
 def predict():
@@ -63,31 +59,6 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Gradio interface function for image upload
-def predict_gradio(image):
-    image = Image.fromarray(image)
-    img_array = preprocess_image(image)
-    predictions = model.predict(img_array)
-    predicted_class = np.argmax(predictions)  # Get the class with the highest probability
-    return class_labels[predicted_class]
-
-# Gradio interface setup
-iface = gr.Interface(fn=predict_gradio, inputs=gr.Image(), outputs=gr.Label())
-
-# Function to run Flask app
-def run_flask():
-    app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)
-
-# Function to run Gradio interface
-def run_gradio():
-    iface.launch(server_name="0.0.0.0", server_port=7860, share=True)
-
-# Run Flask and Gradio together
+# Start the Flask app
 if __name__ == '__main__':
-    # Running Flask on a separate thread
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.start()
-
-    # Running Gradio interface on a separate thread
-    gradio_thread = threading.Thread(target=run_gradio)
-    gradio_thread.start()
+    app.run(host='0.0.0.0', port=10000, debug=False)

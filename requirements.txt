@@ -8,3 +8,5 @@ python-multipart
 flask
 gradio
 Flask
+CORS
+flask-cors
