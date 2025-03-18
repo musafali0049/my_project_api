@@ -56,5 +56,8 @@ iface = gr.Interface(fn=predict_gradio, inputs=gr.Image(), outputs=gr.Label())
 
 # Run Flask and Gradio together
 if __name__ == '__main__':
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8000, debug=False, use_reloader=False)).start()
-    iface.launch()
+    # Flask app on Render will run on port 10000
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=10000, debug=False, use_reloader=False)).start()
+    
+    # Gradio interface, running on a separate port, e.g., 7860
+    iface.launch(server_name="0.0.0.0", server_port=7860, share=True)
