@@ -6,6 +6,5 @@ gunicorn
 requests
 python-multipart
 flask
+gradio
 Flask
-uvicorn
-gradio"gradio" 
