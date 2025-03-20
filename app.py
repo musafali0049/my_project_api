@@ -14,7 +14,7 @@ CORS(app)
 
 # Load the trained model
 MODEL_PATH = "model/model_weights.h5"
-model = tf.keras.models.load_model(MODEL_PATH)
+model = load_model(MODEL_PATH)
 
 # Define class labels
 class_labels = ['BAC_PNEUMONIA', 'NORMAL', 'VIR_PNEUMONIA']
@@ -27,6 +27,12 @@ def preprocess_image(image):
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
     return img_array
 
+# Root endpoint to confirm the server is running
+@app.route('/')
+def home():
+    return jsonify({'message': 'Server is running. Use /predict or /upload for API requests.'})
+
+# Endpoint for image prediction using URL
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -49,7 +55,7 @@ def predict():
 
         # Prepare the response
         result = class_labels[predicted_class]
-        probabilities = {class_labels[i]: predictions[0][i] * 100 for i in range(len(class_labels))}
+        probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
 
         return jsonify({
             'prediction': result,
@@ -59,10 +65,11 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# New endpoint to upload an image file
+# Check if uploaded file format is allowed
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
 
+# Endpoint for image prediction using file upload
 @app.route('/upload', methods=['POST'])
 def upload():
     try:
@@ -79,7 +86,7 @@ def upload():
             predictions = model.predict(img_array)
             predicted_class = np.argmax(predictions)
             result = class_labels[predicted_class]
-            probabilities = {class_labels[i]: predictions[0][i] * 100 for i in range(len(class_labels))}
+            probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
             
             return jsonify({
                 'prediction': result,
