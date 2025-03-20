@@ -14,23 +14,23 @@ import threading
 app = Flask(__name__)
 CORS(app)
 
-# Thread-safe Model Loading
+# Thread-safe model loading
 MODEL_PATH = "model/model_weights.h5"
 model = None
 lock = threading.Lock()
 
-def load_model_once():
-    global model
-    if model is None:
-        with lock:
-            if model is None:  # Double-check locking
-                model = load_model(MODEL_PATH)
-
-# Load the model only once at startup
-load_model_once()
-
 # Define class labels
 class_labels = ['BAC_PNEUMONIA', 'NORMAL', 'VIR_PNEUMONIA']
+
+def get_model():
+    """ Lazily load model when first request comes """
+    global model
+    with lock:
+        if model is None:
+            print("🔹 Loading model...")
+            model = load_model(MODEL_PATH)
+            print("✅ Model loaded successfully!")
+    return model
 
 # Image preprocessing function
 def preprocess_image(img):
@@ -61,7 +61,9 @@ def predict():
         img = Image.open(BytesIO(response.content))
         img_array = preprocess_image(img)
 
-        with lock:  # Ensure thread safety
+        model = get_model()  # Lazily load model
+
+        with lock:
             predictions = model.predict(img_array)
             predicted_class = np.argmax(predictions)
             result = class_labels[predicted_class]
@@ -85,22 +87,21 @@ def upload():
         if file.filename == '':
             return jsonify({'error': 'No selected file'}), 400
 
-        if file:
-            img = Image.open(file)
-            img_array = preprocess_image(img)
+        img = Image.open(file)
+        img_array = preprocess_image(img)
 
-            with lock:  # Ensure thread safety
-                predictions = model.predict(img_array)
-                predicted_class = np.argmax(predictions)
-                result = class_labels[predicted_class]
-                probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
+        model = get_model()  # Lazily load model
 
-            return jsonify({
-                'prediction': result,
-                'probabilities': probabilities
-            })
-        else:
-            return jsonify({'error': 'Invalid file format'}), 400
+        with lock:
+            predictions = model.predict(img_array)
+            predicted_class = np.argmax(predictions)
+            result = class_labels[predicted_class]
+            probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
+
+        return jsonify({
+            'prediction': result,
+            'probabilities': probabilities
+        })
 
     except Exception as e:
         return jsonify({'error': str(e)}), 500
