@@ -8,6 +8,7 @@ from PIL import Image
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
+import gc
 
 app = Flask(__name__)
 CORS(app)
@@ -20,19 +21,18 @@ model = load_model(MODEL_PATH)
 class_labels = ['BAC_PNEUMONIA', 'NORMAL', 'VIR_PNEUMONIA']
 
 # Image preprocessing function
-def preprocess_image(image):
-    image = image.convert('L')  # Convert to grayscale
-    image = image.resize((224, 224))  # Resize to match model input size
-    img_array = np.array(image) / 255.0  # Normalize to [0,1]
+def preprocess_image(img):
+    img = img.convert('L')  # Convert to grayscale
+    img = img.resize((224, 224))  # Resize to match model input size
+    img_array = image.img_to_array(img)
+    img_array = img_array / 255.0  # Normalize to [0,1]
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
     return img_array
 
-# Root endpoint to confirm the server is running
 @app.route('/')
 def home():
     return jsonify({'message': 'Server is running. Use /predict or /upload for API requests.'})
 
-# Endpoint for image prediction using URL
 @app.route('/predict', methods=['POST'])
 def predict():
     try:
@@ -46,17 +46,21 @@ def predict():
         if response.status_code != 200:
             return jsonify({'error': 'Failed to fetch image'}), 400
         
-        image = Image.open(BytesIO(response.content))
-        img_array = preprocess_image(image)
-
+        img = Image.open(BytesIO(response.content))
+        img_array = preprocess_image(img)
+        
+        # Ensure TensorFlow session cleanup to avoid memory issues
+        tf.keras.backend.clear_session()
+        
         # Make a prediction
         predictions = model.predict(img_array)
         predicted_class = np.argmax(predictions)
-
-        # Prepare the response
         result = class_labels[predicted_class]
         probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
-
+        
+        # Force garbage collection to free up memory
+        gc.collect()
+        
         return jsonify({
             'prediction': result,
             'probabilities': probabilities
@@ -65,11 +69,6 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Check if uploaded file format is allowed
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
-
-# Endpoint for image prediction using file upload
 @app.route('/upload', methods=['POST'])
 def upload():
     try:
@@ -80,13 +79,20 @@ def upload():
         if file.filename == '':
             return jsonify({'error': 'No selected file'}), 400
         
-        if file and allowed_file(file.filename):
-            image = Image.open(file)
-            img_array = preprocess_image(image)
+        if file:
+            img = Image.open(file)
+            img_array = preprocess_image(img)
+            
+            # Ensure TensorFlow session cleanup to avoid memory issues
+            tf.keras.backend.clear_session()
+            
             predictions = model.predict(img_array)
             predicted_class = np.argmax(predictions)
             result = class_labels[predicted_class]
             probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
+            
+            # Force garbage collection to free up memory
+            gc.collect()
             
             return jsonify({
                 'prediction': result,
@@ -98,7 +104,6 @@ def upload():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Start the Flask app with port binding for Render
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))  # Default to 10000 if not set
+    port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port, debug=False)
