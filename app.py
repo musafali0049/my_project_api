@@ -4,28 +4,27 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing import image
 import requests
 from io import BytesIO
-from PIL import Image  # Ensure PIL is imported for Image processing
+from PIL import Image
 from flask import Flask, request, jsonify
-from flask_cors import CORS  # For enabling CORS
-import os  # Import os to handle dynamic port binding
+from flask_cors import CORS
+import os
 import gradio as gr
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+CORS(app)
 
-# Load the trained model (ensure this path is correct and model file is uploaded correctly)
+# Load the trained model
 MODEL_PATH = "model/model_weights.h5"
 model = tf.keras.models.load_model(MODEL_PATH)
 
-# Define the class labels (ensure this matches your training setup)
+# Define class labels
 class_labels = ['BAC_PNEUMONIA', 'NORMAL', 'VIR_PNEUMONIA']
 
-# Image preprocessing function to match the specification
+# Image preprocessing function
 def preprocess_image(image):
     image = image.convert('L')  # Convert to grayscale
     image = image.resize((224, 224))  # Resize to match model input size
-    img_array = np.array(image)  # Convert image to numpy array
-    img_array = img_array / 255.0  # Normalize to [0, 1]
+    img_array = np.array(image) / 255.0  # Normalize to [0,1]
     img_array = np.expand_dims(img_array, axis=0)  # Add batch dimension
     return img_array
 
@@ -45,9 +44,11 @@ def predict():
         image = Image.open(BytesIO(response.content))
         img_array = preprocess_image(image)
 
+        # Make a prediction
         predictions = model.predict(img_array)
-        predicted_class = np.argmax(predictions)  # Get the class with the highest probability
+        predicted_class = np.argmax(predictions)
 
+        # Prepare the response
         result = class_labels[predicted_class]
         probabilities = {class_labels[i]: predictions[0][i] * 100 for i in range(len(class_labels))}
 
@@ -59,26 +60,22 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# Gradio UI function
-def classify_image(img):
-    img = Image.fromarray(img)
-    img_array = preprocess_image(img)
+# Gradio Interface
+def predict_gradio(image):
+    img_array = preprocess_image(image)
     predictions = model.predict(img_array)
     predicted_class = np.argmax(predictions)
     result = class_labels[predicted_class]
-    probabilities = {class_labels[i]: predictions[0][i] * 100 for i in range(len(class_labels))}
+    probabilities = {class_labels[i]: round(predictions[0][i] * 100, 2) for i in range(len(class_labels))}
     return result, probabilities
 
 iface = gr.Interface(
-    fn=classify_image,
-    inputs=gr.Image(shape=(224, 224)),
-    outputs=[gr.Label(), gr.JSON()],
-    title="Pneumonia Classifier",
-    description="Upload an image to classify if it's Normal, Bacterial Pneumonia, or Viral Pneumonia."
+    fn=predict_gradio,
+    inputs=gr.Image(type="pil"),  # Fixed issue with 'shape'
+    outputs=["text", "label"]
 )
 
-# Start the Flask app with dynamic port binding
+# Start the Flask app with port binding for Render
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 10000))  # Default to 10000 if no port is found
+    port = int(os.environ.get("PORT", 10000))  # Default to 10000 if not set
     app.run(host='0.0.0.0', port=port, debug=False)
-    iface.launch()
