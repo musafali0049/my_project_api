@@ -59,6 +59,38 @@ def predict():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# New endpoint to upload an image file
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
+
+@app.route('/upload', methods=['POST'])
+def upload():
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No selected file'}), 400
+        
+        if file and allowed_file(file.filename):
+            image = Image.open(file)
+            img_array = preprocess_image(image)
+            predictions = model.predict(img_array)
+            predicted_class = np.argmax(predictions)
+            result = class_labels[predicted_class]
+            probabilities = {class_labels[i]: predictions[0][i] * 100 for i in range(len(class_labels))}
+            
+            return jsonify({
+                'prediction': result,
+                'probabilities': probabilities
+            })
+        else:
+            return jsonify({'error': 'Invalid file format'}), 400
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # Start the Flask app with port binding for Render
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))  # Default to 10000 if not set
