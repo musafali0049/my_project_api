@@ -8,7 +8,6 @@ from PIL import Image
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
-import gradio as gr
 
 app = Flask(__name__)
 CORS(app)
@@ -59,21 +58,6 @@ def predict():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-# Gradio Interface
-def predict_gradio(image):
-    img_array = preprocess_image(image)
-    predictions = model.predict(img_array)
-    predicted_class = np.argmax(predictions)
-    result = class_labels[predicted_class]
-    probabilities = {class_labels[i]: round(predictions[0][i] * 100, 2) for i in range(len(class_labels))}
-    return result, probabilities
-
-iface = gr.Interface(
-    fn=predict_gradio,
-    inputs=gr.Image(type="pil"),  # Fixed issue with 'shape'
-    outputs=["text", "label"]
-)
 
 # Start the Flask app with port binding for Render
 if __name__ == '__main__':
