@@ -9,13 +9,25 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import gc
+import threading
 
 app = Flask(__name__)
 CORS(app)
 
-# Load the trained model
+# Thread-safe Model Loading
 MODEL_PATH = "model/model_weights.h5"
-model = load_model(MODEL_PATH)
+model = None
+lock = threading.Lock()
+
+def load_model_once():
+    global model
+    if model is None:
+        with lock:
+            if model is None:  # Double-check locking
+                model = load_model(MODEL_PATH)
+
+# Load the model only once at startup
+load_model_once()
 
 # Define class labels
 class_labels = ['BAC_PNEUMONIA', 'NORMAL', 'VIR_PNEUMONIA']
@@ -38,34 +50,28 @@ def predict():
     try:
         data = request.get_json()
         image_url = data.get('image_url')
-        
+
         if not image_url:
             return jsonify({'error': 'No image URL provided'}), 400
-        
+
         response = requests.get(image_url)
         if response.status_code != 200:
             return jsonify({'error': 'Failed to fetch image'}), 400
-        
+
         img = Image.open(BytesIO(response.content))
         img_array = preprocess_image(img)
-        
-        # Ensure TensorFlow session cleanup to avoid memory issues
-        tf.keras.backend.clear_session()
-        
-        # Make a prediction
-        predictions = model.predict(img_array)
-        predicted_class = np.argmax(predictions)
-        result = class_labels[predicted_class]
-        probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
-        
-        # Force garbage collection to free up memory
-        gc.collect()
-        
+
+        with lock:  # Ensure thread safety
+            predictions = model.predict(img_array)
+            predicted_class = np.argmax(predictions)
+            result = class_labels[predicted_class]
+            probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
+
         return jsonify({
             'prediction': result,
             'probabilities': probabilities
         })
-    
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -74,36 +80,31 @@ def upload():
     try:
         if 'file' not in request.files:
             return jsonify({'error': 'No file uploaded'}), 400
-        
+
         file = request.files['file']
         if file.filename == '':
             return jsonify({'error': 'No selected file'}), 400
-        
+
         if file:
             img = Image.open(file)
             img_array = preprocess_image(img)
-            
-            # Ensure TensorFlow session cleanup to avoid memory issues
-            tf.keras.backend.clear_session()
-            
-            predictions = model.predict(img_array)
-            predicted_class = np.argmax(predictions)
-            result = class_labels[predicted_class]
-            probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
-            
-            # Force garbage collection to free up memory
-            gc.collect()
-            
+
+            with lock:  # Ensure thread safety
+                predictions = model.predict(img_array)
+                predicted_class = np.argmax(predictions)
+                result = class_labels[predicted_class]
+                probabilities = {class_labels[i]: float(predictions[0][i]) * 100 for i in range(len(class_labels))}
+
             return jsonify({
                 'prediction': result,
                 'probabilities': probabilities
             })
         else:
             return jsonify({'error': 'Invalid file format'}), 400
-    
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
